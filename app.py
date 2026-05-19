@@ -49,6 +49,17 @@ zh_pipeline = None
 en_pipelines = None
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+def resolve_voice_path(voice: str) -> str:
+    """优先使用项目本地音色文件，避免按音色名回退到HF下载。"""
+    if voice.endswith('.pt'):
+        return voice
+
+    local_voice = Path(__file__).parent / 'voices' / f'{voice}.pt'
+    if local_voice.exists():
+        return str(local_voice)
+
+    return voice
+
 def get_available_voices():
     """获取可用的音色列表"""
     voices_dir = Path(__file__).parent / 'voices'
@@ -171,16 +182,17 @@ def api_generate():
         
         # 生成语音
         start_time = time.time()
+        resolved_voice = resolve_voice_path(voice)
         
         if language == 'zh' or voice.startswith(('zf_', 'zm_')):
             # 中文生成
-            generator = zh_pipeline(text, voice=voice, speed=speed_callable)
+            generator = zh_pipeline(text, voice=resolved_voice, speed=speed_callable)
             result = next(generator)
             wav = result.audio
         else:
             # 英文生成
             british = voice.startswith('bf_')
-            generator = en_pipelines[british](text, voice=voice)
+            generator = en_pipelines[british](text, voice=resolved_voice)
             result = next(generator)
             wav = result.audio
         
