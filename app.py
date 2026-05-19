@@ -136,6 +136,48 @@ def speed_callable(len_ps):
         speed = 1 - (len_ps - 83) / 500
     return speed * 1.1
 
+def synthesize_speech(text: str, voice: str, language: str):
+    """执行语音生成并返回统一结果，供JSON接口和二进制接口复用。"""
+    if not text:
+        raise ValueError('文本不能为空')
+
+    if len(text) > MAX_TEXT_LENGTH:
+        raise ValueError(f'文本长度不能超过{MAX_TEXT_LENGTH}字符')
+
+    start_time = time.time()
+    resolved_voice = resolve_voice_path(voice)
+
+    if language == 'zh' or voice.startswith(('zf_', 'zm_')):
+        generator = zh_pipeline(text, voice=resolved_voice, speed=speed_callable)
+        result = next(generator)
+        wav = result.audio
+    else:
+        british = voice.startswith('bf_')
+        generator = en_pipelines[british](text, voice=resolved_voice)
+        result = next(generator)
+        wav = result.audio
+
+    generation_time = time.time() - start_time
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
+    filename = f'tts_{voice}_{timestamp}.wav'
+    filepath = OUTPUT_DIR / filename
+    sf.write(filepath, wav, SAMPLE_RATE)
+
+    audio_buffer = io.BytesIO()
+    sf.write(audio_buffer, wav, SAMPLE_RATE, format='wav')
+    audio_bytes = audio_buffer.getvalue()
+
+    return {
+        'audio_bytes': audio_bytes,
+        'filename': filename,
+        'generation_time': round(generation_time, 3),
+        'audio_length': round(len(wav) / SAMPLE_RATE, 2),
+        'sample_rate': SAMPLE_RATE,
+        'voice': voice,
+        'text_length': len(text),
+        'download_url': url_for('api_download', filename=filename)
+    }
+
 @app.route('/')
 def index():
     """主页"""
@@ -171,65 +213,69 @@ def api_generate():
         text = data.get('text', '').strip()
         voice = data.get('voice', 'zf_001')
         language = data.get('language', 'zh')
-        
-        if not text:
-            return jsonify({
-                'success': False, 
-                'error': '文本不能为空'
-            }), 400
-        
-        if len(text) > MAX_TEXT_LENGTH:
-            return jsonify({
-                'success': False, 
-                'error': f'文本长度不能超过{MAX_TEXT_LENGTH}字符'
-            }), 400
-        
-        # 生成语音
-        start_time = time.time()
-        resolved_voice = resolve_voice_path(voice)
-        
-        if language == 'zh' or voice.startswith(('zf_', 'zm_')):
-            # 中文生成
-            generator = zh_pipeline(text, voice=resolved_voice, speed=speed_callable)
-            result = next(generator)
-            wav = result.audio
-        else:
-            # 英文生成
-            british = voice.startswith('bf_')
-            generator = en_pipelines[british](text, voice=resolved_voice)
-            result = next(generator)
-            wav = result.audio
-        
-        generation_time = time.time() - start_time
-        
-        # 保存音频文件
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
-        filename = f'tts_{voice}_{timestamp}.wav'
-        filepath = OUTPUT_DIR / filename
-        
-        sf.write(filepath, wav, SAMPLE_RATE)
-        
-        # 转换为base64用于前端播放
-        audio_buffer = io.BytesIO()
-        sf.write(audio_buffer, wav, SAMPLE_RATE, format='wav')
-        audio_base64 = base64.b64encode(audio_buffer.getvalue()).decode('utf-8')
+        result = synthesize_speech(text, voice, language)
+        audio_base64 = base64.b64encode(result['audio_bytes']).decode('utf-8')
         
         return jsonify({
             'success': True,
             'audio_data': f'data:audio/wav;base64,{audio_base64}',
-            'filename': filename,
-            'generation_time': round(generation_time, 3),
-            'audio_length': round(len(wav) / SAMPLE_RATE, 2),
-            'sample_rate': SAMPLE_RATE,
-            'voice': voice,
-            'text_length': len(text)
+            'filename': result['filename'],
+            'generation_time': result['generation_time'],
+            'audio_length': result['audio_length'],
+            'sample_rate': result['sample_rate'],
+            'voice': result['voice'],
+            'text_length': result['text_length'],
+            'download_url': result['download_url']
         })
-        
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
     except Exception as e:
         return jsonify({
             'success': False, 
             'error': f'生成失败: {str(e)}'
         }), 500
+
+@app.route('/api/generate-file', methods=['POST'])
+def api_generate_file():
+    """API: 直接返回WAV二进制流，适合curl等外部客户端。"""
+    if not KOKORO_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Kokoro模块未安装'}), 500
+
+    if model is None:
+        return jsonify({'success': False, 'error': '模型未初始化'}), 500
+
+    try:
+        data = request.get_json()
+        text = data.get('text', '').strip()
+        voice = data.get('voice', 'zf_001')
+        language = data.get('language', 'zh')
+        result = synthesize_speech(text, voice, language)
+
+        response = send_file(
+            io.BytesIO(result['audio_bytes']),
+            mimetype='audio/wav',
+            as_attachment=True,
+            download_name=result['filename']
+        )
+        response.headers['X-TTS-Filename'] = result['filename']
+        response.headers['X-TTS-Voice'] = result['voice']
+        response.headers['X-TTS-Text-Length'] = str(result['text_length'])
+        response.headers['X-TTS-Audio-Length'] = str(result['audio_length'])
+        response.headers['X-TTS-Generation-Time'] = str(result['generation_time'])
+        response.headers['X-TTS-Sample-Rate'] = str(result['sample_rate'])
+        response.headers['X-TTS-Download-URL'] = result['download_url']
+        response.headers['Access-Control-Expose-Headers'] = (
+            'Content-Disposition, X-TTS-Filename, X-TTS-Voice, X-TTS-Text-Length, '
+            'X-TTS-Audio-Length, X-TTS-Generation-Time, X-TTS-Sample-Rate, X-TTS-Download-URL'
+        )
+        return response
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'生成失败: {str(e)}'}), 500
 
 @app.route('/api/download/<filename>')
 def api_download(filename):
