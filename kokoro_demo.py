@@ -7,6 +7,7 @@ Kokoro TTS 中文语音合成演示脚本
 
 import kokoro
 import torchaudio
+import soundfile as sf
 import os
 from pathlib import Path
 import argparse
@@ -19,18 +20,31 @@ class KokoroTTSDemo:
     def __init__(self, device='cpu'):
         """初始化Kokoro TTS"""
         print("正在初始化Kokoro TTS...")
-        self.pipeline = kokoro.KPipeline('z', device=device)
+        self.pipeline = kokoro.KPipeline('z', repo_id='hexgrad/Kokoro-82M-v1.1-zh', device=device)
         self.sample_rate = 24000  # Kokoro的默认采样率
         print(f"Kokoro TTS初始化完成，使用设备: {device}")
     
-    def synthesize(self, text, voice='af_heart', output_path=None):
+    def _resolve_voice_path(self, voice: str) -> str:
+        """优先使用项目本地音色文件，避免按音色名回退到HF下载。"""
+        if voice.endswith('.pt'):
+            return voice
+        
+        local_voice = Path(__file__).parent / 'voices' / f'{voice}.pt'
+        if local_voice.exists():
+            return str(local_voice)
+            
+        return voice
+    
+    def synthesize(self, text, voice='zf_001', output_path=None):
         """合成语音"""
         print(f"正在合成文本: {text}")
-        print(f"使用语音: {voice}")
+        
+        resolved_voice = self._resolve_voice_path(voice)
+        print(f"使用语音: {resolved_voice}")
         
         try:
             # 生成语音
-            results = list(self.pipeline(text, voice=voice))
+            results = list(self.pipeline(text, voice=resolved_voice))
             
             if not results:
                 print("错误: 没有生成任何结果")
@@ -46,8 +60,8 @@ class KokoroTTSDemo:
                 # 确保输出目录存在
                 os.makedirs(os.path.dirname(output_path), exist_ok=True)
                 
-                # 保存为WAV文件
-                torchaudio.save(output_path, audio.unsqueeze(0), self.sample_rate)
+                # 保存为WAV文件 (使用 soundfile 替代 torchaudio.save 避免 backend 问题)
+                sf.write(output_path, audio.numpy(), self.sample_rate)
                 print(f"音频已保存为: {output_path}")
             
             return {
@@ -62,7 +76,7 @@ class KokoroTTSDemo:
             print(f"合成失败: {e}")
             return None
     
-    def batch_synthesize(self, texts, voice='af_heart', output_dir='output'):
+    def batch_synthesize(self, texts, voice='zf_001', output_dir='output'):
         """批量合成语音"""
         print(f"开始批量合成 {len(texts)} 个文本...")
         
@@ -86,7 +100,7 @@ def main():
     parser.add_argument('--text', '-t', type=str, 
                       default='你好，这是Kokoro中文语音合成系统的演示。',
                       help='要合成的文本')
-    parser.add_argument('--voice', '-v', type=str, default='af_heart',
+    parser.add_argument('--voice', '-v', type=str, default='zf_001',
                       help='语音模型名称')
     parser.add_argument('--output', '-o', type=str, default='output/demo.wav',
                       help='输出音频文件路径')

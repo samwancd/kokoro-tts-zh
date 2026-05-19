@@ -6,12 +6,21 @@
 
 import kokoro
 import warnings
+from pathlib import Path
 warnings.filterwarnings("ignore")
+
+def resolve_voice_path(voice: str) -> str:
+    if voice.endswith('.pt'):
+        return voice
+    local_voice = Path(__file__).parent / 'voices' / f'{voice}.pt'
+    if local_voice.exists():
+        return str(local_voice)
+    return voice
 
 def get_available_voices():
     """获取可用的语音模型列表"""
     print("正在初始化Kokoro TTS...")
-    pipeline = kokoro.KPipeline('z', device='cpu')
+    pipeline = kokoro.KPipeline('z', repo_id='hexgrad/Kokoro-82M-v1.1-zh', device='cpu')
     
     # 尝试一些常见的语音模型
     test_voices = [
@@ -36,7 +45,8 @@ def get_available_voices():
     for voice in test_voices:
         try:
             print(f"测试 {voice}... ", end="")
-            results = list(pipeline(test_text, voice=voice))
+            resolved = resolve_voice_path(voice)
+            results = list(pipeline(test_text, voice=resolved))
             if results:
                 available_voices.append(voice)
                 print("✅ 可用")

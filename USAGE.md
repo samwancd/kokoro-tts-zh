@@ -25,24 +25,24 @@ python kokoro_demo.py --batch
 
 #### 指定语音模型
 ```bash
-python kokoro_demo.py --text "测试不同的语音" --voice af_heart --output output/test.wav
+python kokoro_demo.py --text "测试不同的语音" --voice af_maple --output output/test.wav
 ```
 
 ### 3. Python API 调用
 
 ```python
 import kokoro
-import torchaudio
+import soundfile as sf
 
-# 初始化
-pipeline = kokoro.KPipeline('z', device='cpu')
+# 初始化 (离线环境或指定模型库时，需指定 repo_id)
+pipeline = kokoro.KPipeline('z', repo_id='hexgrad/Kokoro-82M-v1.1-zh', device='cpu')
 
 # 合成语音
-results = list(pipeline('你好世界', voice='af_heart'))
+results = list(pipeline('你好世界', voice='voices/zf_001.pt')) # 建议使用本地 .pt 文件路径
 audio = results[0].audio
 
 # 保存文件
-torchaudio.save('output.wav', audio.unsqueeze(0), 24000)
+sf.write('output.wav', audio.numpy(), 24000)
 ```
 
 ### 4. 命令行参数
@@ -50,7 +50,7 @@ torchaudio.save('output.wav', audio.unsqueeze(0), 24000)
 | 参数 | 简写 | 默认值 | 说明 |
 |------|------|--------|------|
 | `--text` | `-t` | 默认测试文本 | 要合成的文本内容 |
-| `--voice` | `-v` | `af_heart` | 语音模型名称 |
+| `--voice` | `-v` | `zf_001` | 语音模型名称 |
 | `--output` | `-o` | `output/demo.wav` | 输出文件路径 |
 | `--device` | `-d` | `cpu` | 计算设备 |
 | `--batch` | - | - | 启用批量处理模式 |
@@ -58,7 +58,7 @@ torchaudio.save('output.wav', audio.unsqueeze(0), 24000)
 ## 可用语音模型
 
 ### 推荐语音
-- `af_heart` - 女声，温暖亲切
+- `af_maple` - 女声，温暖亲切
 - `zf_001` - 女声，清晰标准
 - `zm_009` - 男声，沉稳有力
 
@@ -97,7 +97,7 @@ python kokoro_demo.py \
 ```bash
 python kokoro_demo.py \
   --text "从前有一座山，山里有座庙" \
-  --voice af_heart \
+  --voice af_maple \
   --output stories/story_intro.wav
 ```
 

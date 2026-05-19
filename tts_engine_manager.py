@@ -109,10 +109,23 @@ class KokoroEngine(TTSEngine):
             print(f"❌ Kokoro引擎初始化失败: {str(e)}")
             return False
     
+    def _resolve_voice_path(self, voice: str) -> str:
+        """优先使用项目本地音色文件"""
+        if voice.endswith('.pt'):
+            return voice
+        
+        local_voice = Path(__file__).parent / 'voices' / f'{voice}.pt'
+        if local_voice.exists():
+            return str(local_voice)
+            
+        return voice
+
     def generate(self, text: str, voice: str = 'zf_001', language: str = 'zh', 
                 **kwargs) -> TTSResult:
         """生成语音"""
         start_time = time.time()
+        
+        resolved_voice = self._resolve_voice_path(voice)
         
         def speed_callable(len_ps):
             speed = 0.8
@@ -125,13 +138,13 @@ class KokoroEngine(TTSEngine):
         try:
             if language == 'zh' or voice.startswith(('zf_', 'zm_')):
                 # 中文生成
-                generator = self.zh_pipeline(text, voice=voice, speed=speed_callable)
+                generator = self.zh_pipeline(text, voice=resolved_voice, speed=speed_callable)
                 result = next(generator)
                 wav = result.audio
             else:
                 # 英文生成
                 british = voice.startswith('bf_')
-                generator = self.en_pipelines[british](text, voice=voice)
+                generator = self.en_pipelines[british](text, voice=resolved_voice)
                 result = next(generator)
                 wav = result.audio
             

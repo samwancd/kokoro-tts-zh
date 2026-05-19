@@ -7,6 +7,7 @@ Kokoro TTS 语音模型性能测试脚本
 
 import kokoro
 import torchaudio
+import soundfile as sf
 import os
 import time
 from pathlib import Path
@@ -19,18 +20,30 @@ class VoiceModelTester:
     def __init__(self, device='cpu'):
         """初始化测试器"""
         print("正在初始化Kokoro TTS测试器...")
-        self.pipeline = kokoro.KPipeline('z', device=device)
+        self.pipeline = kokoro.KPipeline('z', repo_id='hexgrad/Kokoro-82M-v1.1-zh', device=device)
         self.sample_rate = 24000
         self.device = device
         print(f"初始化完成，使用设备: {device}")
     
+    def _resolve_voice_path(self, voice: str) -> str:
+        """优先使用项目本地音色文件，避免按音色名回退到HF下载。"""
+        if voice.endswith('.pt'):
+            return voice
+        
+        local_voice = Path(__file__).parent / 'voices' / f'{voice}.pt'
+        if local_voice.exists():
+            return str(local_voice)
+            
+        return voice
+    
     def test_voice_model(self, text, voice, output_dir='voice_tests'):
         """测试单个语音模型"""
+        resolved_voice = self._resolve_voice_path(voice)
         try:
             start_time = time.time()
             
             # 生成语音
-            results = list(self.pipeline(text, voice=voice))
+            results = list(self.pipeline(text, voice=resolved_voice))
             
             if not results:
                 return {
@@ -51,7 +64,7 @@ class VoiceModelTester:
             # 保存音频文件
             os.makedirs(output_dir, exist_ok=True)
             output_path = os.path.join(output_dir, f"test_{voice}.wav")
-            torchaudio.save(output_path, audio.unsqueeze(0), self.sample_rate)
+            sf.write(output_path, audio.numpy(), self.sample_rate)
             
             return {
                 'voice': voice,
@@ -76,7 +89,7 @@ class VoiceModelTester:
         """批量测试推荐的语音模型"""
         # 推荐的语音模型列表
         recommended_voices = [
-            'af_heart',    # 女声，温暖
+            'af_maple',    # 女声，温暖
             'zf_001',      # 女声，标准
             'zf_004',      # 女声，清晰
             'zm_009',      # 男声，沉稳
