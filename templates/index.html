@@ -197,12 +197,12 @@
                             </div>
 
                             <div class="mb-3">
-                                <label for="text-input" class="form-label">输入文本 <span class="text-muted">(最多500字符)</span></label>
+                                <label for="text-input" class="form-label">输入文本 <span class="text-muted">(最多{{ max_text_length }}字符)</span></label>
                                 <textarea id="text-input" class="form-control" rows="4" 
                                           placeholder="请输入要转换为语音的文本..."></textarea>
                                 <div class="mt-2">
                                     <span class="text-muted">字符数: </span>
-                                    <span id="char-count">0</span>/500
+                                    <span id="char-count">0</span>/{{ max_text_length }}
                                 </div>
                             </div>
 
@@ -259,6 +259,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let currentFilename = null;
+        const maxTextLength = {{ max_text_length | tojson }};
         
         // 页面加载完成后初始化
         document.addEventListener('DOMContentLoaded', function() {
@@ -349,7 +350,7 @@
             
             // 超出限制时显示警告
             const countElement = document.getElementById('char-count');
-            if (count > 500) {
+            if (count > maxTextLength) {
                 countElement.style.color = '#dc3545';
                 countElement.parentElement.style.fontWeight = 'bold';
             } else {
@@ -368,8 +369,8 @@
                 return;
             }
             
-            if (text.length > 500) {
-                alert('文本长度不能超过500字符');
+            if (text.length > maxTextLength) {
+                alert(`文本长度不能超过${maxTextLength}字符`);
                 return;
             }
             

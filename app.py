@@ -39,7 +39,10 @@ CORS(app)
 # 配置
 REPO_ID = 'hexgrad/Kokoro-82M-v1.1-zh'
 SAMPLE_RATE = 24000
-MAX_TEXT_LENGTH = 500
+try:
+    MAX_TEXT_LENGTH = max(1, int(os.getenv('MAX_TEXT_LENGTH', '500')))
+except ValueError:
+    MAX_TEXT_LENGTH = 500
 OUTPUT_DIR = Path(__file__).parent / 'output'
 OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -140,7 +143,8 @@ def index():
     return render_template('index.html', 
                          voices=voices, 
                          kokoro_available=KOKORO_AVAILABLE,
-                         device=device)
+                         device=device,
+                         max_text_length=MAX_TEXT_LENGTH)
 
 @app.route('/api/voices')
 def api_voices():
